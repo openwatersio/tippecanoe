@@ -1,0 +1,71 @@
+name: Check for upstream updates
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check upstream version
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest=$(gh api repos/felt/tippecanoe/releases/latest --jq .tag_name)
+          current=$(grep -oP '^ARG TIPPECANOE_VERSION=\K.+' Dockerfile)
+
+          echo "latest=$latest"
+          echo "current=$current"
+
+          # Only accept sane version strings before substituting into the Dockerfile
+          if ! echo "$latest" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected version format: $latest" >&2
+            exit 1
+          fi
+
+          changed=false
+          if [ "$latest" != "$current" ]; then
+            sed -i "s/^ARG TIPPECANOE_VERSION=.*/ARG TIPPECANOE_VERSION=${latest}/" Dockerfile
+            changed=true
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        if: steps.versions.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch="auto/update-upstream-versions"
+          git checkout -b "$branch"
+          git add Dockerfile
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -m "Update tippecanoe to ${{ steps.versions.outputs.latest }}"
+          git push -f origin "$branch"
+
+          body=$(printf 'Automated update detected an upstream release:\n\n- tippecanoe: %s → %s\n\nSource: https://github.com/felt/tippecanoe/releases' \
+            '${{ steps.versions.outputs.current }}' '${{ steps.versions.outputs.latest }}')
+
+          # Create PR if one doesn't already exist for this branch
+          existing_pr=$(gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$existing_pr" ]; then
+            gh pr edit "$existing_pr" --body "$body"
+          else
+            gh pr create \
+              --title "Update tippecanoe to ${{ steps.versions.outputs.latest }}" \
+              --body "$body" \
+              --head "$branch"
+            gh pr merge --auto --squash "$branch"
+          fi

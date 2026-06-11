@@ -33,11 +33,11 @@ Published to `ghcr.io/openwatersio/tippecanoe`.
 Tags:
 
 - `latest` — most recent build
-- `<version>` (e.g. `2.79.0`) — matching the upstream tippecanoe release
+- `2`, `2.79`, `2.79.0` — matching the upstream tippecanoe release
 
-Multi-arch: `linux/amd64` and `linux/arm64`.
+Multi-arch: `linux/amd64` and `linux/arm64`, built on native runners.
 
-A scheduled workflow checks for new upstream releases weekly and opens a pull request to update.
+A daily workflow checks for new upstream releases and publishes them automatically. The image is also rebuilt monthly to pick up Debian base image security patches.
 
 ## Building Locally
 

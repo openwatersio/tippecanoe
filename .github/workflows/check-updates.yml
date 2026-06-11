@@ -2,12 +2,12 @@ name: Check for upstream updates
 
 on:
   schedule:
-    - cron: "0 9 * * 1"
+    - cron: "0 9 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
+  actions: write
 
 jobs:
   check:
@@ -40,32 +40,18 @@ jobs:
 
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          echo "current=$current" >> "$GITHUB_OUTPUT"
 
-      - name: Create pull request
+      - name: Commit and publish
         if: steps.versions.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          branch="auto/update-upstream-versions"
-          git checkout -b "$branch"
           git add Dockerfile
           git -c user.name="github-actions[bot]" \
               -c user.email="github-actions[bot]@users.noreply.github.com" \
               commit -m "Update tippecanoe to ${{ steps.versions.outputs.latest }}"
-          git push -f origin "$branch"
+          git push origin main
 
-          body=$(printf 'Automated update detected an upstream release:\n\n- tippecanoe: %s → %s\n\nSource: https://github.com/felt/tippecanoe/releases' \
-            '${{ steps.versions.outputs.current }}' '${{ steps.versions.outputs.latest }}')
-
-          # Create PR if one doesn't already exist for this branch
-          existing_pr=$(gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$existing_pr" ]; then
-            gh pr edit "$existing_pr" --body "$body"
-          else
-            gh pr create \
-              --title "Update tippecanoe to ${{ steps.versions.outputs.latest }}" \
-              --body "$body" \
-              --head "$branch"
-            gh pr merge --auto --squash "$branch"
-          fi
+          # Pushes made with GITHUB_TOKEN don't trigger `push` workflows,
+          # so dispatch the publish workflow explicitly.
+          gh workflow run publish.yml --ref main

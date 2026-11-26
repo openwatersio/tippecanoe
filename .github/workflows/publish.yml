@@ -105,7 +105,7 @@ jobs:
           echo "tippecanoe=$tippecanoe" >> "$GITHUB_OUTPUT"
 
       - id: meta
-        uses: docker/metadata-action@v5.10.0
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.IMAGE }}
           tags: |
